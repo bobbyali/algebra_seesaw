@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Algebra Seesaw - Learn Algebra Through Play</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Algebra Seesaw</h1>
+            <p>Solve equations by keeping the seesaw balanced!</p>
+        </header>
+
+        <main>
+            <!-- Equation Display + Difficulty -->
+            <div class="top-bar">
+                <div class="equation-display">
+                    <h2 id="current-equation">3x + 5 = 11</h2>
+                </div>
+                <div class="difficulty-wrapper">
+                    <label for="difficulty-select">Difficulty:</label>
+                    <select id="difficulty-select">
+                        <option value="easy">Easy</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="hard">Hard</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Seesaw Visualization -->
+            <div class="seesaw-container">
+                <div class="seesaw">
+                    <div class="seesaw-fulcrum"></div>
+                    <div class="seesaw-arm" id="seesaw-arm">
+                        <div class="left-side" id="left-side">
+                            <div class="weight" id="left-weight">3x + 5</div>
+                        </div>
+                        <div class="right-side" id="right-side">
+                            <div class="weight" id="right-weight">11</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="balance-indicator" id="balance-indicator">⚖️ Balanced</div>
+            </div>
+
+            <!-- Input Controls -->
+            <div class="input-section">
+                <div class="operation-controls">
+                    <h3>Enter Operations:</h3>
+
+                    <div class="input-row">
+                        <span class="side-label">Left Side:</span>
+                        <div class="op-buttons" id="left-op-buttons">
+                            <button class="op-btn active" data-op="+" data-side="left">+</button>
+                            <button class="op-btn" data-op="-" data-side="left">−</button>
+                            <button class="op-btn" data-op="*" data-side="left">×</button>
+                            <button class="op-btn" data-op="/" data-side="left">÷</button>
+                        </div>
+                        <input type="number" id="left-value" value="0">
+                    </div>
+
+                    <div class="input-row">
+                        <span class="side-label">Right Side:</span>
+                        <div class="op-buttons" id="right-op-buttons">
+                            <button class="op-btn active" data-op="+" data-side="right">+</button>
+                            <button class="op-btn" data-op="-" data-side="right">−</button>
+                            <button class="op-btn" data-op="*" data-side="right">×</button>
+                            <button class="op-btn" data-op="/" data-side="right">÷</button>
+                        </div>
+                        <input type="number" id="right-value" value="0">
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="reset-button">↺ Reset</button>
+                    <button id="go-button">Go!</button>
+                </div>
+            </div>
+
+            <!-- Feedback and Stats -->
+            <div class="feedback-section">
+                <div class="stats">
+                    <p>Questions Attempted: <span id="questions-attempted">0</span></p>
+                    <p>Solved Successfully: <span id="solved-count">0</span></p>
+                </div>
+                <div class="message" id="message"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Use the seesaw to solve algebra problems! Keep both sides balanced.</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
