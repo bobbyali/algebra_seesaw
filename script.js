@@ -1,6 +1,9 @@
-// Algebra Seesaw App
+// Algebra Seesaw App - AST/Object Based Edition
 
 // ─── Game State ────────────────────────────────────────────────────────────
+// Expressions are now structured objects, not strings.
+// A left-side AST object looks like: { coeff: 1, constant: 3, multiplier: 1, divisor: 1 }
+// representing: multiplier * (coeff*x + constant) / divisor
 let gameState = {
   currentEquation: null,
   solved: false,
@@ -61,13 +64,17 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ─── Equation Generation ─────────────────────────────────────────────────────
-// Apply a colour theme to the equation box based on current difficulty
 function updateDifficultyTheme() {
   const box = document.querySelector(".equation-display");
   if (!box) return;
-  box.classList.remove("difficulty-easy", "difficulty-medium", "difficulty-hard");
+  box.classList.remove("difficulty-easy", "difficulty-medium", "difficulty-hard", "difficulty-very-hard");
   const diff = elements.difficultySelect ? elements.difficultySelect.value : "medium";
   box.classList.add(`difficulty-${diff}`);
+}
+
+// AST constructor helper
+function createAST(coeff, constant, multiplier = 1, divisor = 1) {
+  return { coeff, constant, multiplier, divisor };
 }
 
 function generateNewEquation() {
@@ -75,176 +82,204 @@ function generateNewEquation() {
   resetInputs();
   updateDifficultyTheme();
 
-  const difficulty = elements.difficultySelect
-    ? elements.difficultySelect.value
-    : "medium";
+  const difficulty = elements.difficultySelect ? elements.difficultySelect.value : "medium";
+
+  let leftAst, rightVal;
 
   if (difficulty === "easy") {
-    // Single operation to solve: x + b = c  OR  x - b = c
+    // Single operation: x + b = c
     const b = getRandomInt(1, 9);
     const xVal = getRandomInt(1, 9);
     const useAdd = Math.random() < 0.5;
-    gameState.currentEquation = {
-      left: useAdd ? `x + ${b}` : `x - ${b}`,
-      right: useAdd ? xVal + b : xVal - b,
-    };
 
-  } else if (difficulty === "medium") {
-    // Two operations to solve: ax + b = c  (a=2..3, small numbers)
-    const a = getRandomInt(2, 3);
+    leftAst = createAST(1, useAdd ? b : -b);
+    rightVal = useAdd ? xVal + b : xVal - b;
+  }
+  else if (difficulty === "medium") {
+    // Two operations: ax + b = c
+    const a = getRandomInt(2, 4);
     const b = getRandomInt(1, 9);
     const xVal = getRandomInt(2, 9);
-    const c = a * xVal + b;
-    const sign = Math.random() < 0.5 ? "+" : "-";
-    const bSigned = sign === "+" ? b : -b;
-    gameState.currentEquation = {
-      left: sign === "+" ? `${a}x + ${b}` : `${a}x - ${b}`,
-      right: a * xVal + bSigned,
-    };
+    const sign = Math.random() < 0.5 ? 1 : -1;
+    const bSigned = sign * b;
 
-  } else {
-    // Hard: three operations to solve: ax + b = c  (a=3..9, larger numbers)
-    // Student must: subtract b, then divide by a (two visible steps, but with bigger numbers)
-    // We deliberately make coefficients and constants larger (double-digit range)
+    leftAst = createAST(a, bSigned);
+    rightVal = a * xVal + bSigned;
+  }
+  else if (difficulty === "hard") {
+    // Hard: ax + b = c (larger numbers)
     const a = getRandomInt(4, 12);
     const b = getRandomInt(10, 50);
     const xVal = getRandomInt(5, 20);
-    const sign = Math.random() < 0.5 ? "+" : "-";
-    const bVal = sign === "+" ? b : -b;
-    gameState.currentEquation = {
-      left: sign === "+" ? `${a}x + ${b}` : `${a}x - ${b}`,
-      right: a * xVal + bVal,
-    };
+    const sign = Math.random() < 0.5 ? 1 : -1;
+    const bSigned = sign * b;
+
+    leftAst = createAST(a, bSigned);
+    rightVal = a * xVal + bSigned;
   }
+  else if (difficulty === "very-hard") {
+    // Very Hard: a(cx + b) = d  OR  (cx + b)/a = d
+    const isFraction = Math.random() < 0.5;
+    const a = getRandomInt(3, 8); // outer multiplier or divisor
+    const c = getRandomInt(2, 5); // inner coefficient for x
+    const b = getRandomInt(5, 25); // inner constant
+    const xVal = getRandomInt(3, 15);
+    const sign = Math.random() < 0.5 ? 1 : -1;
+    const bSigned = sign * b;
+
+    // Inner expression is (cx ± b)
+    const innerVal = c * xVal + bSigned;
+
+    if (isFraction) {
+      // (cx ± b) / a = d
+      leftAst = createAST(c, bSigned, 1, a);
+      rightVal = innerVal / a;
+      // If division doesn't yield whole number, tweak b so it does
+      if (innerVal % a !== 0) {
+        const remainder = innerVal % a;
+        const adjustment = remainder > 0 ? (a - remainder) : -(a + remainder);
+        const newInner = innerVal + adjustment;
+        rightVal = newInner / a;
+        leftAst = createAST(c, bSigned + adjustment, 1, a);
+      }
+    } else {
+      // a(cx ± b) = d
+      leftAst = createAST(c, bSigned, a, 1);
+      rightVal = a * innerVal;
+    }
+  }
+
+  gameState.currentEquation = {
+    left: leftAst,
+    right: rightVal, // Right side remains a simple number for the game scope
+  };
 
   resetSeesaw();
 }
 
-// ─── Expression Simplification ────────────────────────────────────────────────
-// Parse an algebraic expression of the form: [coeff]x [+/-] [constant]
-// Returns { coeff, constant } numbers, or null if not parseable.
-function parseExpr(expr) {
-  const s = expr.toString().trim();
-  // Match forms like: x, -x, 2x, -3x, x + 5, 3x - 7, -2x + 10, etc.
-  // Group 1: optional leading sign + coefficient + 'x'
-  // Group 2: optional constant part  (sign + number)
-  const re = /^([+-]?\s*\d*)\s*x\s*([+-]\s*\d+)?$/;
-  const m = s.replace(/\s+/g, " ").match(/^([+-]?\s*\d*)\s*x\s*([+-]\s*\d+)?$/);
-  if (!m) return null;
+// ─── Visual Rendering (AST to HTML string) ──────────────────────────────────
+// Returns HTML string representing the AST or number
+function renderExpression(expr) {
+  // If it's just a number (the right side)
+  if (typeof expr === "number") return expr.toString();
+  if (typeof expr === "string") return expr;
 
-  let coeff = 1;
-  const rawCoeff = m[1].replace(/\s/g, "");
-  if (rawCoeff === "" || rawCoeff === "+") coeff = 1;
-  else if (rawCoeff === "-") coeff = -1;
-  else coeff = parseFloat(rawCoeff);
+  const { coeff, constant, multiplier, divisor } = expr;
 
-  let constant = 0;
-  if (m[2]) {
-    constant = parseFloat(m[2].replace(/\s/g, ""));
-  }
+  // Build the core inner term: e.g. "3x + 5" or "x - 2" or "x"
+  let innerHtml = "";
+  if (coeff === 1) innerHtml = "x";
+  else if (coeff === -1) innerHtml = "-x";
+  else if (coeff !== 0) innerHtml = `${coeff}x`;
 
-  return { coeff, constant };
-}
-
-// Format a parsed expr back into a friendly string like "3x + 5", "x - 2", "x"
-function formatExpr(coeff, constant) {
-  let left = "";
-  if (coeff === 1) left = "x";
-  else if (coeff === -1) left = "-x";
-  else left = `${coeff}x`;
-
-  if (constant === 0) return left;
-  if (constant > 0) return `${left} + ${constant}`;
-  return `${left} - ${Math.abs(constant)}`;
-}
-
-// Apply operation to an algebraic expression, simplifying constants
-function applyOperationAlgebraic(expr, op, value) {
-  const parsed = parseExpr(expr);
-  if (!parsed) {
-    // Fallback: just append (shouldn't happen with generated equations)
-    return `${expr} ${op} ${value}`;
-  }
-
-  let { coeff, constant } = parsed;
-
-  if (op === "+") {
-    constant += value;
-  } else if (op === "-") {
-    constant -= value;
-  } else if (op === "*") {
-    coeff *= value;
-    constant *= value;
-  } else if (op === "/") {
-    if (value === 0) return expr; // guard
-    // Only divide if it divides evenly
-    if (coeff % value === 0 && constant % value === 0) {
-      coeff /= value;
-      constant /= value;
+  if (constant !== 0) {
+    if (innerHtml === "") {
+      innerHtml = constant.toString();
     } else {
-      // Show fraction form for non-clean division
-      return `(${expr}) ÷ ${value}`;
+      innerHtml += constant > 0 ? ` + ${constant}` : ` − ${Math.abs(constant)}`;
     }
   }
 
-  return formatExpr(coeff, constant);
-}
+  if (innerHtml === "") innerHtml = "0"; // edge case: solved to 0?
 
-// Apply operation to a pure numeric expression (the right side)
-function applyOperationNumeric(expr, op, value) {
-  const num = parseFloat(expr);
-  if (isNaN(num)) return expr;
-  switch (op) {
-    case "+": return (num + value).toString();
-    case "-": return (num - value).toString();
-    case "*": return (num * value).toString();
-    case "/": return value === 0 ? expr : (num / value).toString();
-    default: return expr;
+  // Wrap with multiplier if needed
+  let topHtml = innerHtml;
+  if (multiplier !== 1) {
+    topHtml = `<span class="expr-chunk">${multiplier}<span class="paren-expr">${innerHtml}</span></span>`;
   }
+
+  // Wrap with division if needed
+  if (divisor !== 1) {
+    return `
+      <div class="fraction">
+        <div class="numerator">${topHtml}</div>
+        <div class="fraction-line"></div>
+        <div class="denominator">${divisor}</div>
+      </div>
+    `;
+  }
+
+  // No divisor
+  return topHtml;
 }
 
-// ─── Seesaw ──────────────────────────────────────────────────────────────────
-function resetSeesaw() {
-  elements.seesawArm.style.transition = "transform 0.5s ease";
-  elements.seesawArm.style.transform = "rotate(0deg)";
-  elements.balanceIndicator.textContent = "⚖️ Balanced";
-  elements.balanceIndicator.className = "balance-indicator";
-}
+// ─── Math Operations on AST (with unwrapping constraint) ────────────────────
+// Returns { success: boolean, newAst: object, error: string }
+function applyOperationAlgebraic(ast, op, value) {
+  let { coeff, constant, multiplier, divisor } = ast;
 
-// Two-phase animation: tip one side randomly, then rebalance
-function animateSeesawBalance() {
-  // Randomly tip left or right first
-  const tilt = Math.random() < 0.5 ? -12 : 12;
-  elements.seesawArm.style.transition = "transform 0.4s ease";
-  elements.seesawArm.style.transform = `rotate(${tilt}deg)`;
+  if (op === "+") {
+    if (divisor !== 1) return { success: false, error: "Clear the division first!" };
+    if (multiplier !== 1) return { success: false, error: "Clear the multiplication first!" };
+    constant += value;
+  } else if (op === "-") {
+    if (divisor !== 1) return { success: false, error: "Clear the division first!" };
+    if (multiplier !== 1) return { success: false, error: "Clear the multiplication first!" };
+    constant -= value;
+  } else if (op === "*") {
+    // If there is a divisor, and student is multiplying by that divisor, it clears
+    if (divisor > 1) {
+      if (value === divisor) {
+        divisor = 1; // Unwrapped!
+      } else if (divisor % value === 0) {
+        divisor /= value; // Partial cancel
+      } else {
+        multiplier *= value; // Just piles on
+      }
+    } else {
+      multiplier *= value;
+      // Distribute immediately if just a coefficient and constant
+      if (multiplier !== 1 && coeff % 1 === 0 && constant % 1 === 0) {
+        coeff *= multiplier;
+        constant *= multiplier;
+        multiplier = 1;
+      }
+    }
+  } else if (op === "/") {
+    if (value === 0) return { success: false, error: "Cannot divide by zero!" };
 
-  // Phase 2: rebalance
-  setTimeout(() => {
-    elements.seesawArm.style.transition = "transform 0.5s ease";
-    elements.seesawArm.style.transform = "rotate(0deg)";
-  }, 500);
+    // If there is a multiplier, and student divides by it, it clears
+    if (multiplier > 1) {
+      if (value === multiplier) {
+        multiplier = 1; // Unwrapped!
+      } else if (multiplier % value === 0) {
+        multiplier /= value; // Partial cancel
+      } else {
+        divisor *= value;
+      }
+    } else {
+      // Divide everything directly if it divides evenly
+      if (coeff % value === 0 && constant % value === 0) {
+        coeff /= value;
+        constant /= value;
+      } else {
+        // Stack a fraction
+        divisor *= value;
+      }
+    }
+  }
+
+  return {
+    success: true,
+    newAst: createAST(coeff, constant, multiplier, divisor)
+  };
 }
 
 // ─── Input Helpers ───────────────────────────────────────────────────────────
 function resetInputs() {
-  // Reset operator buttons to "+"
   document.querySelectorAll(".op-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.op === "+");
   });
   gameState.leftOp = "+";
   gameState.rightOp = "+";
-
-  // Reset values to 0
   if (elements.leftValue) elements.leftValue.value = "0";
   if (elements.rightValue) elements.rightValue.value = "0";
-
   showMessage("Enter operations on both sides and click Go!", "info");
 }
 
 function validateInputs() {
   const leftVal = elements.leftValue.value.trim();
   const rightVal = elements.rightValue.value.trim();
-
   if (leftVal === "" || isNaN(leftVal)) {
     showMessage("Please enter a number on the left side.", "error");
     return false;
@@ -256,6 +291,24 @@ function validateInputs() {
   return true;
 }
 
+// ─── Seesaw ──────────────────────────────────────────────────────────────────
+function resetSeesaw() {
+  elements.seesawArm.style.transition = "transform 0.5s ease";
+  elements.seesawArm.style.transform = "rotate(0deg)";
+  elements.balanceIndicator.textContent = "⚖️ Balanced";
+  elements.balanceIndicator.className = "balance-indicator";
+}
+
+function animateSeesawBalance() {
+  const tilt = Math.random() < 0.5 ? -12 : 12;
+  elements.seesawArm.style.transition = "transform 0.4s ease";
+  elements.seesawArm.style.transform = `rotate(${tilt}deg)`;
+  setTimeout(() => {
+    elements.seesawArm.style.transition = "transform 0.5s ease";
+    elements.seesawArm.style.transform = "rotate(0deg)";
+  }, 500);
+}
+
 // ─── Go Button Handler ────────────────────────────────────────────────────────
 function handleGoButtonClick() {
   if (!validateInputs()) return;
@@ -265,7 +318,6 @@ function handleGoButtonClick() {
   const leftVal = parseFloat(elements.leftValue.value);
   const rightVal = parseFloat(elements.rightValue.value);
 
-  // Balance check: same op and value on both sides
   const isBalanced = leftOp === rightOp && leftVal === rightVal;
 
   if (!isBalanced) {
@@ -286,35 +338,39 @@ function handleGoButtonClick() {
     return;
   }
 
-  // Division by zero guard
   if (leftOp === "/" && leftVal === 0) {
     showMessage("❌ You cannot divide by zero!", "error");
     return;
   }
 
-  // Apply operations
-  const leftExpr = gameState.currentEquation.left.toString();
-  const rightExpr = gameState.currentEquation.right.toString();
+  // Attempt the operation on the AST
+  const leftResult = applyOperationAlgebraic(gameState.currentEquation.left, leftOp, leftVal);
 
-  const newLeft = leftExpr.includes("x")
-    ? applyOperationAlgebraic(leftExpr, leftOp, leftVal)
-    : applyOperationNumeric(leftExpr, leftOp, leftVal);
+  // Guard the unwrapping constraint
+  if (!leftResult.success) {
+    showMessage(`❌ ${leftResult.error}`, "error");
+    return;
+  }
 
-  const newRight = applyOperationNumeric(rightExpr, rightOp, rightVal);
+  // Apply to right side
+  let rightExpr = gameState.currentEquation.right;
+  if (rightOp === "+") rightExpr += rightVal;
+  else if (rightOp === "-") rightExpr -= rightVal;
+  else if (rightOp === "*") rightExpr *= rightVal;
+  else if (rightOp === "/") rightExpr /= rightVal;
 
   // Update state
-  gameState.currentEquation.left = newLeft;
-  gameState.currentEquation.right = newRight;
+  gameState.currentEquation.left = leftResult.newAst;
+  gameState.currentEquation.right = rightExpr;
 
-  // Seesaw animation (tip then rebalance)
   animateSeesawBalance();
 
-  // Check for win: x isolated (e.g. "x", "-x", "2x" where coeff is 1 and const is 0)
-  const parsed = parseExpr(newLeft.toString().trim());
-  const isXIsolated = parsed && parsed.constant === 0 && Math.abs(parsed.coeff) === 1;
+  // Check for win condition: is the LHS just x? (coeff=±1, const=0, mult=1, div=1)
+  const ast = gameState.currentEquation.left;
+  const isXIsolated = Math.abs(ast.coeff) === 1 && ast.constant === 0 && ast.multiplier === 1 && ast.divisor === 1;
 
   if (isXIsolated) {
-    const xValue = parsed.coeff === 1 ? parseFloat(newRight) : -parseFloat(newRight);
+    const xValue = ast.coeff === 1 ? rightExpr : -rightExpr;
     gameState.solvedCount++;
     gameState.questionsAttempted++;
 
@@ -333,7 +389,7 @@ function handleGoButtonClick() {
     return;
   }
 
-  // Balanced, not yet solved
+  // Balanced, go on
   setTimeout(() => {
     elements.balanceIndicator.textContent = "⚖️ Perfectly Balanced!";
     elements.balanceIndicator.className = "balance-indicator success";
@@ -345,11 +401,13 @@ function handleGoButtonClick() {
 // ─── Display ─────────────────────────────────────────────────────────────────
 function updateDisplay() {
   if (gameState.currentEquation) {
-    const leftStr = gameState.currentEquation.left.toString();
-    const rightStr = gameState.currentEquation.right.toString();
-    elements.currentEquation.textContent = `${leftStr} = ${rightStr}`;
-    elements.leftWeight.textContent = leftStr;
-    elements.rightWeight.textContent = rightStr;
+    const leftHtml = renderExpression(gameState.currentEquation.left);
+    const rightHtml = renderExpression(gameState.currentEquation.right);
+
+    // We update innerHTML now because the fractions use DOM elements
+    elements.currentEquation.innerHTML = `${leftHtml} <div class="equals-sign" style="margin: 0 10px;">=</div> ${rightHtml}`;
+    elements.leftWeight.innerHTML = leftHtml;
+    elements.rightWeight.innerHTML = rightHtml;
   }
   elements.questionsAttempted.textContent = gameState.questionsAttempted || "0";
   elements.solvedCount.textContent = gameState.solvedCount || "0";

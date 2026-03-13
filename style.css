@@ -80,6 +80,10 @@ main {
     background: linear-gradient(to right, #f7576a, #ff9a44);
 }
 
+.equation-display.difficulty-very-hard {
+    background: linear-gradient(to right, #72278e, #c026d3);
+}
+
 #current-equation {
     font-size: 2rem;
     font-weight: bold;
@@ -88,6 +92,10 @@ main {
     padding: 15px;
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
 }
 
 .difficulty-wrapper {
@@ -196,6 +204,53 @@ main {
     text-align: center;
     padding: 5px;
     word-break: break-word;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Fractions & Structure Rendering ─────────────────────────────────────── */
+.expr-chunk {
+    display: inline-flex;
+    align-items: center;
+}
+
+.fraction {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 5px;
+}
+
+.numerator {
+    padding: 0 8px;
+    margin-bottom: 2px;
+}
+
+.fraction-line {
+    width: 100%;
+    height: 2px;
+    background-color: currentColor;
+    margin: 2px 0;
+}
+
+.denominator {
+    padding: 0 8px;
+    margin-top: 2px;
+}
+
+.paren-expr {
+    display: inline-flex;
+    align-items: center;
+}
+
+.paren-expr::before {
+    content: "(";
+}
+
+.paren-expr::after {
+    content: ")";
 }
 
 .balance-indicator {
@@ -229,19 +284,19 @@ main {
 /* ── Input Section ───────────────────────────────────────────────────────── */
 .input-section {
     background: linear-gradient(to right, #ff9a9e, #fad0c4);
-    padding: 20px;
+    padding: 10px;
     border-radius: 15px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .operation-controls {
-    margin-bottom: 20px;
+    margin-bottom: 15px;
 }
 
 .operation-controls h3 {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     color: #333;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .input-row {
